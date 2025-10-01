@@ -1,284 +1,271 @@
 import React, { useState, useEffect } from 'react';
 
-type GameMode = 'menu' | 'difficultySelection' | 'vsComputer' | 'vsPlayer';
+type Player = 'X' | 'O' | null;
+type GameState = 'menu' | 'difficulty' | 'playing' | 'gameOver';
+type GameMode = 'cpu' | 'player';
 type Difficulty = 'easy' | 'medium' | 'hard';
 
-// Kazananı ve kazanma çizgisini belirleyen yardımcı fonksiyon
-const calculateWinner = (squares: Array<string | null>): { winner: string | null; line: number[] | null } => {
-  const lines = [
-    [0, 1, 2], [3, 4, 5], [6, 7, 8], // rows
-    [0, 3, 6], [1, 4, 7], [2, 5, 8], // columns
-    [0, 4, 8], [2, 4, 6]             // diagonals
-  ];
-  for (let i = 0; i < lines.length; i++) {
-    const [a, b, c] = lines[i];
-    if (squares[a] && squares[a] === squares[b] && squares[a] === squares[c]) {
-      return { winner: squares[a], line: lines[i] };
-    }
-  }
-  return { winner: null, line: null };
-};
+const Square: React.FC<{ value: Player; onClick: () => void }> = ({ value, onClick }) => (
+  <button
+    className="w-24 h-24 md:w-32 md:h-32 bg-gray-800 rounded-lg flex items-center justify-center text-5xl md:text-6xl font-bold shadow-lg transform transition-transform hover:scale-105"
+    onClick={onClick}
+    aria-label={`Square ${value ? `with ${value}` : 'empty'}`}
+  >
+    {value === 'X' && <span className="text-blue-400" style={{ textShadow: '0 0 5px #60a5fa, 0 0 10px #60a5fa, 2px 2px 2px #1e3a8a, 4px 4px 4px #1e3a8a' }}>X</span>}
+    {value === 'O' && <span className="text-pink-400" style={{ textShadow: '0 0 5px #f472b6, 0 0 10px #f472b6, 2px 2px 2px #831843, 4px 4px 4px #831843' }}>O</span>}
+  </button>
+);
 
-// Kare bileşeni
-interface SquareProps {
-  value: string | null;
-  onSquareClick: () => void;
-  isWinning: boolean;
-}
-
-const Square: React.FC<SquareProps> = ({ value, onSquareClick, isWinning }) => {
-  const valueClass = value === 'X'
-    ? 'text-blue-400 shadow-blue-800 [text-shadow:1px_1px_0_var(--tw-shadow-color),2px_2px_0_var(--tw-shadow-color),3px_3px_0_var(--tw-shadow-color),4px_4px_8px_rgba(0,0,0,0.4)]'
-    : 'text-pink-400 shadow-pink-800 [text-shadow:1px_1px_0_var(--tw-shadow-color),2px_2px_0_var(--tw-shadow-color),3px_3px_0_var(--tw-shadow-color),4px_4px_8px_rgba(0,0,0,0.4)]';
-  
-  const winningClass = isWinning ? 'bg-green-600' : 'bg-gray-800 hover:bg-gray-700';
-  const cursorClass = value ? 'cursor-not-allowed' : '';
-
-  return (
-    <button
-      className={`w-24 h-24 md:w-28 md:h-28 flex items-center justify-center rounded-lg shadow-lg transition-all duration-200 ${winningClass} ${cursorClass}`}
-      onClick={onSquareClick}
-      aria-label={`Square ${value || 'empty'}`}
-    >
-      <span className={`text-6xl md:text-7xl font-bold ${valueClass}`}>
-        {value}
-      </span>
-    </button>
-  );
-};
-
-// Ana App bileşeni
 const App: React.FC = () => {
-  const [gameMode, setGameMode] = useState<GameMode>('menu');
-  const [difficulty, setDifficulty] = useState<Difficulty | null>(null);
-  const [board, setBoard] = useState<Array<string | null>>(Array(9).fill(null));
-  const [isXNext, setIsXNext] = useState<boolean>(true);
-  const [isComputerThinking, setIsComputerThinking] = useState<boolean>(false);
+  const [board, setBoard] = useState<Player[]>(Array(9).fill(null));
+  const [isPlayerNext, setIsPlayerNext] = useState<boolean>(true);
+  const [winner, setWinner] = useState<Player | 'Berabere'>(null);
+  const [gameState, setGameState] = useState<GameState>('menu');
+  const [gameMode, setGameMode] = useState<GameMode>('cpu');
+  const [difficulty, setDifficulty] = useState<Difficulty>('medium');
 
-  const { winner, line: winningLine } = calculateWinner(board);
-  const isDraw = board.every(square => square !== null) && !winner;
-
-  // Minimax algoritması (Zor Seviye)
-  const minimax = (newBoard: Array<string | null>, player: 'X' | 'O'): { score: number, index?: number } => {
-    const emptySpots = newBoard.map((val, idx) => val === null ? idx : null).filter(val => val !== null);
-    
-    const { winner } = calculateWinner(newBoard);
-    if (winner === 'X') return { score: -10 };
-    if (winner === 'O') return { score: 10 };
-    if (emptySpots.length === 0) return { score: 0 };
-
-    const moves: {index: number, score: number}[] = [];
-    for (const spot of emptySpots) {
-        if (spot === null) continue;
-        const move: {index: number, score: number} = { index: spot, score: 0 };
-        newBoard[spot] = player;
-
-        if (player === 'O') {
-            const result = minimax(newBoard, 'X');
-            move.score = result.score;
-        } else {
-            const result = minimax(newBoard, 'O');
-            move.score = result.score;
-        }
-        newBoard[spot] = null;
-        moves.push(move);
+  const calculateWinner = (squares: Player[]): Player | null => {
+    const lines = [
+      [0, 1, 2], [3, 4, 5], [6, 7, 8],
+      [0, 3, 6], [1, 4, 7], [2, 5, 8],
+      [0, 4, 8], [2, 4, 6],
+    ];
+    for (let i = 0; i < lines.length; i++) {
+      const [a, b, c] = lines[i];
+      if (squares[a] && squares[a] === squares[b] && squares[a] === squares[c]) {
+        return squares[a];
+      }
     }
-
-    let bestMove: number = -1;
-    let bestScore = player === 'O' ? -10000 : 10000;
-
-    for (const move of moves) {
-        if (player === 'O') {
-            if (move.score > bestScore) {
-                bestScore = move.score;
-                bestMove = move.index;
-            }
-        } else {
-            if (move.score < bestScore) {
-                bestScore = move.score;
-                bestMove = move.index;
-            }
-        }
-    }
-    return { score: bestScore, index: bestMove };
+    return null;
   };
 
-  // Bilgisayar için en iyi hamleyi bulan fonksiyon
-  const findBestMove = (currentBoard: Array<string | null>, currentDifficulty: Difficulty): number => {
-    const emptySquares = currentBoard.map((val, idx) => val === null ? idx : null).filter(val => val !== null) as number[];
+  const handleSquareClick = (index: number) => {
+    if (board[index] || winner || (gameMode === 'cpu' && !isPlayerNext)) return;
 
-    switch (currentDifficulty) {
-      case 'easy':
-        return emptySquares[Math.floor(Math.random() * emptySquares.length)];
-      
-      case 'hard':
-         const move = minimax(currentBoard.slice(), 'O');
-         return move.index ?? -1;
-
-      case 'medium':
-      default:
-        // 1. Kazanma hamlesini kontrol et ('O' için)
-        for (let i = 0; i < 9; i++) {
-          if (!currentBoard[i]) {
-            const tempBoard = currentBoard.slice();
-            tempBoard[i] = 'O';
-            if (calculateWinner(tempBoard).winner === 'O') return i;
-          }
-        }
-        // 2. Engelleme hamlesini kontrol et ('X' için)
-        for (let i = 0; i < 9; i++) {
-          if (!currentBoard[i]) {
-            const tempBoard = currentBoard.slice();
-            tempBoard[i] = 'X';
-            if (calculateWinner(tempBoard).winner === 'X') return i;
-          }
-        }
-        // 3. Merkezi al
-        if (!currentBoard[4]) return 4;
-        // 4. Boş bir köşe al
-        const corners = [0, 2, 6, 8];
-        const availableCorners = corners.filter(i => !currentBoard[i]);
-        if (availableCorners.length > 0) return availableCorners[Math.floor(Math.random() * availableCorners.length)];
-        // 5. Boş bir kenar al
-        const sides = [1, 3, 5, 7];
-        const availableSides = sides.filter(i => !currentBoard[i]);
-        if (availableSides.length > 0) return availableSides[Math.floor(Math.random() * availableSides.length)];
-        
-        return emptySquares[0]; // Fallback
-    }
-  };
-
-  const handleClick = (i: number) => {
-    if (board[i] || winner || isDraw || (gameMode === 'vsComputer' && !isXNext)) return;
-    const nextBoard = board.slice();
-    nextBoard[i] = isXNext ? 'X' : 'O';
-    setBoard(nextBoard);
-    setIsXNext(!isXNext);
+    const newBoard = board.slice();
+    newBoard[index] = isPlayerNext ? 'X' : 'O';
+    setBoard(newBoard);
+    setIsPlayerNext(!isPlayerNext);
   };
   
+  const computerMove = (currentBoard: Player[]): number => {
+      // Easy: Random move
+      if (difficulty === 'easy') {
+          let emptySquares = currentBoard.map((sq, i) => sq === null ? i : -1).filter(i => i !== -1);
+          return emptySquares[Math.floor(Math.random() * emptySquares.length)];
+      }
+
+      // Hard: Minimax Algorithm
+      if (difficulty === 'hard') {
+          const bestMove = minimax(currentBoard, 'O');
+          return bestMove.index;
+      }
+      
+      // Medium: Strategic move
+      // 1. Check for winning move
+      for (let i = 0; i < 9; i++) {
+          if (currentBoard[i] === null) {
+              const testBoard = currentBoard.slice();
+              testBoard[i] = 'O';
+              if (calculateWinner(testBoard) === 'O') {
+                  return i;
+              }
+          }
+      }
+      // 2. Check to block player's winning move
+      for (let i = 0; i < 9; i++) {
+          if (currentBoard[i] === null) {
+              const testBoard = currentBoard.slice();
+              testBoard[i] = 'X';
+              if (calculateWinner(testBoard) === 'X') {
+                  return i;
+              }
+          }
+      }
+      // 3. Take center
+      if (currentBoard[4] === null) return 4;
+      // 4. Take corners
+      const corners = [0, 2, 6, 8];
+      const emptyCorners = corners.filter(i => currentBoard[i] === null);
+      if (emptyCorners.length > 0) {
+          return emptyCorners[Math.floor(Math.random() * emptyCorners.length)];
+      }
+      // 5. Take sides
+      const sides = [1, 3, 5, 7];
+      const emptySides = sides.filter(i => currentBoard[i] === null);
+      if (emptySides.length > 0) {
+          return emptySides[Math.floor(Math.random() * emptySides.length)];
+      }
+      return -1; // Should not happen
+  };
+
+  const minimax = (newBoard: Player[], player: Player): { score: number, index: number } => {
+      let emptySpots = newBoard.map((sq, i) => sq === null ? i : -1).filter(i => i !== -1);
+
+      if (calculateWinner(newBoard) === 'X') {
+          return { score: -10, index: -1 };
+      } else if (calculateWinner(newBoard) === 'O') {
+          return { score: 10, index: -1 };
+      } else if (emptySpots.length === 0) {
+          return { score: 0, index: -1 };
+      }
+
+      let moves: { score: number, index: number }[] = [];
+      for (let i = 0; i < emptySpots.length; i++) {
+          let move: { score: number, index: number } = { score: 0, index: emptySpots[i] };
+          newBoard[emptySpots[i]] = player;
+
+          if (player === 'O') {
+              let result = minimax(newBoard, 'X');
+              move.score = result.score;
+          } else {
+              let result = minimax(newBoard, 'O');
+              move.score = result.score;
+          }
+          newBoard[emptySpots[i]] = null;
+          moves.push(move);
+      }
+
+      let bestMove = 0;
+      if (player === 'O') {
+          let bestScore = -10000;
+          for (let i = 0; i < moves.length; i++) {
+              if (moves[i].score > bestScore) {
+                  bestScore = moves[i].score;
+                  bestMove = i;
+              }
+          }
+      } else {
+          let bestScore = 10000;
+          for (let i = 0; i < moves.length; i++) {
+              if (moves[i].score < bestScore) {
+                  bestScore = moves[i].score;
+                  bestMove = i;
+              }
+          }
+      }
+      return moves[bestMove];
+  }
+
+
   useEffect(() => {
-    if (gameMode === 'vsComputer' && !isXNext && !winner && !isDraw && difficulty) {
-      setIsComputerThinking(true);
-      const computerMove = findBestMove(board, difficulty);
-      
-      setTimeout(() => {
-        if (computerMove !== -1) {
-          const nextBoard = board.slice();
-          if(!nextBoard[computerMove]) {
-            nextBoard[computerMove] = 'O';
-            setBoard(nextBoard);
-          }
+    const gameWinner = calculateWinner(board);
+    if (gameWinner) {
+      setWinner(gameWinner);
+      setGameState('gameOver');
+    } else if (!board.includes(null)) {
+      setWinner('Berabere');
+      setGameState('gameOver');
+    } else if (gameMode === 'cpu' && !isPlayerNext && gameState === 'playing') {
+      const timeoutId = setTimeout(() => {
+        const move = computerMove(board);
+        if (move !== -1) {
+            handleSquareClick(move);
         }
-        setIsXNext(true);
-        setIsComputerThinking(false);
-      }, 700);
+      }, 500);
+      return () => clearTimeout(timeoutId);
     }
-  }, [isXNext, board, winner, isDraw, gameMode, difficulty]);
+  }, [board, isPlayerNext, gameMode, gameState]);
 
-  const handleReset = () => {
+  const resetGame = () => {
     setBoard(Array(9).fill(null));
-    setIsXNext(true);
-    setIsComputerThinking(false);
+    setIsPlayerNext(true);
+    setWinner(null);
+    setGameState('playing');
   };
 
-  const handleBackToMenu = () => {
-    handleReset();
-    setDifficulty(null);
-    setGameMode('menu');
-  };
+  const goToMenu = () => {
+    setBoard(Array(9).fill(null));
+    setIsPlayerNext(true);
+    setWinner(null);
+    setGameState('menu');
+  }
   
-  const handleModeSelect = (mode: GameMode) => {
+  const selectGameMode = (mode: GameMode) => {
     setGameMode(mode);
+    if (mode === 'player') {
+      setGameState('playing');
+    } else {
+      setGameState('difficulty');
+    }
+  };
+
+  const selectDifficulty = (level: Difficulty) => {
+    setDifficulty(level);
+    setGameState('playing');
   };
   
-  const handleDifficultySelect = (level: Difficulty) => {
-    setDifficulty(level);
-    setGameMode('vsComputer');
-  };
-
-  // Menü ekranı
-  if (gameMode === 'menu') {
-    return (
-      <div className="min-h-screen bg-gray-900 text-white flex flex-col items-center justify-center p-4 antialiased">
-        <header className="text-center mb-12">
-          <h1 className="text-5xl font-bold text-gray-100 tracking-tight">Tic Tac Toe</h1>
-          <p className="text-xl text-gray-400 mt-2">Oyun Modunu Seç</p>
-        </header>
-        <div className="flex flex-col space-y-4">
-           <button onClick={() => handleModeSelect('difficultySelection')} className="px-12 py-4 text-xl font-semibold text-white bg-indigo-600 rounded-lg shadow-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900 focus:ring-indigo-500 transition duration-150 ease-in-out">
-              Bilgisayara Karşı Oyna
-           </button>
-           <button onClick={() => handleModeSelect('vsPlayer')} className="px-12 py-4 text-xl font-semibold text-white bg-pink-600 rounded-lg shadow-md hover:bg-pink-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900 focus:ring-pink-500 transition duration-150 ease-in-out">
-              İki Kişilik Oyna
-           </button>
-        </div>
-      </div>
-    );
-  }
-
-  // Zorluk seçim ekranı
-  if (gameMode === 'difficultySelection') {
-    return (
-      <div className="min-h-screen bg-gray-900 text-white flex flex-col items-center justify-center p-4 antialiased">
-        <header className="text-center mb-12">
-          <h1 className="text-5xl font-bold text-gray-100 tracking-tight">Zorluk Seç</h1>
-        </header>
-        <div className="flex flex-col space-y-4">
-           <button onClick={() => handleDifficultySelect('easy')} className="px-12 py-4 text-xl font-semibold text-white bg-green-600 rounded-lg shadow-md hover:bg-green-700 transition">
-             Kolay
-           </button>
-           <button onClick={() => handleDifficultySelect('medium')} className="px-12 py-4 text-xl font-semibold text-white bg-yellow-600 rounded-lg shadow-md hover:bg-yellow-700 transition">
-             Orta
-           </button>
-           <button onClick={() => handleDifficultySelect('hard')} className="px-12 py-4 text-xl font-semibold text-white bg-red-600 rounded-lg shadow-md hover:bg-red-700 transition">
-             Zor
-           </button>
-           <button onClick={() => handleModeSelect('menu')} className="mt-8 px-8 py-3 text-lg font-semibold text-gray-300 bg-gray-700 rounded-lg shadow-md hover:bg-gray-600 transition">
-             Geri
-           </button>
-        </div>
-      </div>
-    );
-  }
-
-  // Oyun ekranı
-  let status;
-  if (winner) {
-    status = gameMode === 'vsComputer' 
-      ? (winner === 'X' ? "Kazandın!" : "Bilgisayar Kazandı!")
-      : `Kazanan: ${winner}!`;
-  } else if (isDraw) {
-    status = "Berabere!";
-  } else {
-    if (gameMode === 'vsComputer') {
-        status = isXNext ? "Sıra Sende (X)" : "Bilgisayar Düşünüyor...";
-    } else {
-        status = `Sıra ${isXNext ? 'X' : 'O'}'de`;
+  const getStatus = () => {
+    if (winner) {
+        return winner === 'Berabere' ? "Oyun Berabere!" : `Kazanan: ${winner}`;
     }
+    if (gameState !== 'playing') return "";
+    if (gameMode === 'cpu') {
+        return isPlayerNext ? "Sıra Sende" : "Bilgisayar Düşünüyor...";
+    }
+    return `Sıra: ${isPlayerNext ? 'X' : 'O'}`;
   }
 
-  const renderSquare = (i: number) => {
-    const isWinning = winningLine ? winningLine.includes(i) : false;
-    return <Square key={i} value={board[i]} onSquareClick={() => handleClick(i)} isWinning={isWinning} />;
-  };
+  const renderMenu = () => (
+    <div className="text-center">
+      <h1 className="text-5xl font-bold mb-8">Tic Tac Toe</h1>
+      <div className="space-y-4">
+        <button onClick={() => selectGameMode('cpu')} className="w-64 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-6 rounded-lg text-xl transition duration-300">
+          Bilgisayara Karşı Oyna
+        </button>
+        <button onClick={() => selectGameMode('player')} className="w-64 bg-teal-600 hover:bg-teal-700 text-white font-bold py-3 px-6 rounded-lg text-xl transition duration-300">
+          İki Kişilik Oyna
+        </button>
+      </div>
+    </div>
+  );
+
+  const renderDifficultyMenu = () => (
+    <div className="text-center">
+      <h1 className="text-4xl font-bold mb-8">Zorluk Seviyesi Seç</h1>
+      <div className="space-y-4">
+        <button onClick={() => selectDifficulty('easy')} className="w-64 bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-lg text-xl transition duration-300">
+          Kolay
+        </button>
+        <button onClick={() => selectDifficulty('medium')} className="w-64 bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-3 px-6 rounded-lg text-xl transition duration-300">
+          Orta
+        </button>
+        <button onClick={() => selectDifficulty('hard')} className="w-64 bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-6 rounded-lg text-xl transition duration-300">
+          Zor
+        </button>
+      </div>
+       <button onClick={goToMenu} className="mt-8 text-gray-400 hover:text-white transition duration-300">
+        &larr; Geri
+      </button>
+    </div>
+  );
+
+  const renderGame = () => (
+    <div className="flex flex-col items-center">
+        <h2 className="text-3xl font-semibold mb-6 h-10">{getStatus()}</h2>
+        <div className="grid grid-cols-3 gap-3 md:gap-4 p-4 bg-gray-900 rounded-xl shadow-2xl">
+          {board.map((_, i) => (
+            <Square key={i} value={board[i]} onClick={() => handleSquareClick(i)} />
+          ))}
+        </div>
+        {gameState === 'gameOver' && (
+            <div className="mt-8 flex space-x-4">
+                <button onClick={resetGame} className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-6 rounded-lg text-xl transition duration-300">
+                    Tekrar Oyna
+                </button>
+                 <button onClick={goToMenu} className="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-6 rounded-lg text-xl transition duration-300">
+                    Ana Menü
+                </button>
+            </div>
+        )}
+      </div>
+  );
 
   return (
-    <div className="min-h-screen bg-gray-900 text-white flex flex-col items-center justify-center p-4 antialiased">
-      <header className="text-center mb-8"><h1 className="text-5xl font-bold text-gray-100 tracking-tight">Tic Tac Toe</h1></header>
-      <main className="flex flex-col items-center">
-        <div className="text-2xl font-semibold text-gray-300 mb-4 h-8" role="status">{status}</div>
-        <div className="grid grid-cols-3 gap-2 bg-gray-900 p-2 rounded-lg">{Array(9).fill(null).map((_, i) => renderSquare(i))}</div>
-        {(winner || isDraw) && (
-          <div className="mt-8 flex space-x-4">
-            <button onClick={handleReset} className="px-8 py-3 text-lg font-semibold text-white bg-indigo-600 rounded-lg shadow-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900 focus:ring-indigo-500 transition">
-              Tekrar Oyna
-            </button>
-            <button onClick={handleBackToMenu} className="px-8 py-3 text-lg font-semibold text-gray-300 bg-gray-700 rounded-lg shadow-md hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900 focus:ring-gray-500 transition">
-              Ana Menü
-            </button>
-          </div>
-        )}
-      </main>
+    <div className="min-h-screen bg-gray-900 text-white flex flex-col items-center justify-center p-4 font-sans">
+        {gameState === 'menu' && renderMenu()}
+        {gameState === 'difficulty' && renderDifficultyMenu()}
+        {(gameState === 'playing' || gameState === 'gameOver') && renderGame()}
     </div>
   );
 };

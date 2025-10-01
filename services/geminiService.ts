@@ -7,9 +7,8 @@ export const reviewCode = async (code: string, language: string): Promise<string
   if (!code.trim()) {
     throw new Error("Cannot review empty code.");
   }
-  if (!process.env.API_KEY) {
-    throw new Error("API_KEY environment variable not set.");
-  }
+  // FIX: Removed redundant API_KEY check. Per guidelines, we assume the API key is configured in the environment,
+  // and the GoogleGenAI client is initialized at the module level.
 
   const prompt = `
     You are an expert software engineer and world-class code reviewer.
@@ -37,10 +36,12 @@ export const reviewCode = async (code: string, language: string): Promise<string
     });
     return response.text;
   } catch (error) {
+    // FIX: Improved error handling. Instead of returning an error message as a string,
+    // re-throw the error to be caught by the calling component.
     console.error("Error calling Gemini API:", error);
     if (error instanceof Error) {
-        return `An error occurred while reviewing the code: ${error.message}`;
+        throw new Error(`An error occurred while reviewing the code: ${error.message}`);
     }
-    return "An unknown error occurred while reviewing the code.";
+    throw new Error("An unknown error occurred while reviewing the code.");
   }
 };
